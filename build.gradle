@@ -19,7 +19,8 @@ gradlePlugin {
 publishing {
     repositories {
         maven {
-            url="https://ir-nexus.impactradius.net/repository/snapshots/"
+            url="https://nexus.gcp.inf-impact.net/repository/snapshots/"
+            allowInsecureProtocol = true
             credentials {
                 username property("nexusUsername")
                 password property("nexusPassword")
