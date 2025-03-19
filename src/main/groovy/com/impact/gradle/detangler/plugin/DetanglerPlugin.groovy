@@ -22,25 +22,41 @@ class DetanglerPlugin implements Plugin<Project> {
             dependsOn 'compileJava'
             dependsOn 'compileTestJava'
 
-            File allowedFile
+            File allowedFile = null
             File argsFile
 
             doFirst {
-                def startsWith = spec.basePackages.collect {"[" + it.replace('.', ' ') + "]"}.join(" ")
+                boolean debug = Boolean.getBoolean("detangler.debug")
+                if (debug) {
+                    println "generating detangler report"
+                }
+                def startsWith = spec.basePackages.collect { "[" + it.replace('.', ' ') + "]" }.join(" ")
 
-                allowedFile = File.createTempFile("detangler-allowed-in-cycle", ".txt")
-                allowedFile.write(spec.allowedInCycle.collect {"[" + it.replace('.', ' ') + "]"}.join(" "))
+                String allowedFilePath
+                if (spec.allowedInCycle.size() == 1 && new File(spec.allowedInCycle.get(0)).canRead()) {
+                    allowedFilePath = spec.allowedInCycle.get(0)
+                } else {
+                    allowedFile = File.createTempFile("detangler-allowed-in-cycle", ".txt")
+                    allowedFile.write(spec.allowedInCycle.collect { "[" + it.replace('.', ' ') + "]" }.join(" "))
+                    allowedFilePath = allowedFile.getAbsolutePath()
+                }
 
-                String classesDir = project.sourceSets.main.output.classesDirs.join(" ")
-                String testClassesDir = project.sourceSets.test.output.classesDirs.join(" ")
+                if (debug) {
+                    project.sourceSets.main.output.classesDirs.each { println it.getPath() + " has " + (it.isDirectory() ? it.list().length : 0) + " files" }
+                    project.sourceSets.test.output.classesDirs.each { println it.getPath() + " has " + (it.isDirectory() ? it.list().length : 0) + " files" }
+                }
 
-                argsFile = File.createTempFile("detangler", ".txt")
-                argsFile.write(String.join(
+                String classesDir = project.sourceSets.main.output.classesDirs.findAll { it.isDirectory() && it.list().length > 0 }.join(" ")
+                if (spec.includeTests) {
+                    classesDir += " " + project.sourceSets.test.output.classesDirs.findAll { it.isDirectory() && it.list().length > 0 }.join(" ")
+                }
+
+                String config = String.join(
                         "\n",
                         "{",
                         "  reportDir build/report/detangler",
-                        "  searchPaths [ " + classesDir + " " + testClassesDir + " ]",
-                        "  level 2",
+                        "  searchPaths [ " + classesDir + " ]",
+                        "  level " + spec.level,
                         "  startsWith {",
                         "    include [" + startsWith + "]",
                         "    drop [" + startsWith + "]",
@@ -51,16 +67,25 @@ class DetanglerPlugin implements Plugin<Project> {
                         "  ignoreJavadoc true",
                         "  logTiming false",
                         "  logEffectiveConfiguration false",
-                        "  allowedInCycle " + allowedFile.getAbsolutePath(),
+                        "  allowedInCycle " + allowedFilePath,
                         "  pathsRelativeToCurrentDirectory true",
                         "  pathsRelativeToConfigurationDirectory false",
-                        "}"))
+                        "}")
 
+                argsFile = File.createTempFile("detangler", ".txt")
+                argsFile.write(config)
                 args(argsFile.path)
+
+                if (debug) {
+                    println "detangler config is:"
+                    println config
+                }
             }
 
             doLast {
-                allowedFile.delete()
+                if (allowedFile != null) {
+                    allowedFile.delete()
+                }
                 argsFile.delete()
             }
         }
